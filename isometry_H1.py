@@ -88,6 +88,16 @@ class Configs:
 
     self.aConfigs.append(Config(delta_t, a_f, r_f, *finalConfig))
 
+  def cancelGravity(self):
+    window_size = 15
+
+    self.gravity = H()
+
+    for c in self.aConfigs:
+      self.gravity += c.a_f
+
+    self.gravity /= float(len(self.aConfigs))
+
   def plotConfigs(self):
     x_axis = H(0,1,0,0)
     y_axis = H(0,0,1,0)
@@ -97,19 +107,29 @@ class Configs:
     ax = Axes3D(fig)
 
     # plot boundaries, so that all axes are on the same scale
-    ax.scatter(-.01,-.01,-.01)
-    ax.scatter(.01,.01,.01)
+    max_edge = max([max(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs])
+    min_edge = min([min(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs])
+    ax.scatter(min_edge, min_edge, min_edge)
+    ax.scatter(max_edge, max_edge, max_edge)
+
+    # plot path
+    ax.plot([c.p_f.x for c in self.aConfigs], [c.p_f.y for c in self.aConfigs], [c.p_f.z for c in self.aConfigs])
 
     for c in self.aConfigs:
-      x_frame = c.p_f + c.o_f * x_axis * ~c.o_f / 500.0
-      y_frame = c.p_f + c.o_f * y_axis * ~c.o_f / 500.0
-      z_frame = c.p_f + c.o_f * z_axis * ~c.o_f / 500.0
+      ax.scatter([c.p_f.x], [c.p_f.y], [c.p_f.z], c='r')
+    '''
+    # plot moving frames
+    for c in self.aConfigs:
+      x_frame = c.p_f + c.o_f * x_axis * ~c.o_f * 100.0
+      y_frame = c.p_f + c.o_f * y_axis * ~c.o_f * 100.0
+      z_frame = c.p_f + c.o_f * z_axis * ~c.o_f * 100.0
 
-      ax.plot([c.p_f.x, x_frame.x], [c.p_f.y, x_frame.y], [c.p_f.z, x_frame.z])
-      ax.plot([c.p_f.x, y_frame.x], [c.p_f.y, y_frame.y], [c.p_f.z, y_frame.z])
-      ax.plot([c.p_f.x, z_frame.x], [c.p_f.y, z_frame.y], [c.p_f.z, z_frame.z])
+      ax.plot([c.p_f.x, x_frame.x], [c.p_f.y, x_frame.y], [c.p_f.z, x_frame.z], c='r')
+      ax.plot([c.p_f.x, y_frame.x], [c.p_f.y, y_frame.y], [c.p_f.z, y_frame.z], c='g')
+      ax.plot([c.p_f.x, z_frame.x], [c.p_f.y, z_frame.y], [c.p_f.z, z_frame.z], c='b')
       #plt.plot([x_frame.x, c['p'].x, y_frame.x], [x_frame.y, c['p'].y, y_frame.y])
-      
+    '''
     plt.axis('equal')
-    outfilename = 'img/%s.png' % (re.sub("\..*$", "", sys.argv[1]))
+    #outfilename = 'img/motion_%s.png' % (re.sub("\..*$", "", sys.argv[1]))
+    outfilename = 'img/motion_%s.png' % (re.sub("\..*$", "", sys.argv[0]))
     plt.savefig(outfilename)
