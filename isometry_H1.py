@@ -8,20 +8,25 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+import statsmodels.api as sm
+lowess = sm.nonparametric.lowess
+
 import numpy as np
 from quaternion import Quaternion as H
 #-------------------------------------
 
 class Config:
-  def __init__(self, delta_t, a_f, r_f, a_i=H(), v_i=H(), p_i=H(), r_i=H(), o_i=H(1,0,0,0)):
+  def __init__(self, t_f, delta_t, a_f, r_f, t_i = 0, a_i=H(), v_i=H(), p_i=H(), r_i=H(), o_i=H(1,0,0,0)):
     self.delta_t = delta_t
 
+    self.t_i = t_i # initial time
     self.a_i = a_i # initial acceleration of primed origin wrt unprimed origin
     self.v_i = v_i # initial velocity of primed origin wrt unprimed origin
     self.p_i = p_i # initial location of primed origin wrt unprimed origin
     self.r_i = r_i # initial rotational velocity of primed coords wrt unprimed coords
     self.o_i = o_i # initial orientation of primed coords wrt unprimed coords
 
+    self.t_f = t_f # final time
     self.a_f = a_f # final acceleration of primed origin wrt unprimed origin
     self.r_f = r_f # final rotational velocity of primed coords wrt unprimed coords
 
@@ -29,7 +34,7 @@ class Config:
     self.updatePosition()
 
   def updatePosition(self):
-    self.a_f = self.o_i * self.a_f * ~self.o_i
+    self.a_f = self.o_f * self.a_f * ~self.o_f
     self.v_f = self.v_i + (self.a_i + self.a_f)/2.0 * self.delta_t
     self.p_f = self.p_i + (self.v_i + self.v_f)/2.0 * self.delta_t
 
@@ -45,7 +50,8 @@ class Config:
   def getFinalConfig(self):
     return (self.a_f, self.v_f, self.p_f, self.r_f, self.o_f)
 
-  def setFinalConfig(self, a_f, v_f, p_f, r_f, o_f):
+  def setFinalConfig(self, t_f, a_f, v_f, p_f, r_f, o_f):
+    self.t_f = t_f
     self.a_f = a_f
     self.v_f = v_f
     self.v_f = p_f
@@ -66,16 +72,16 @@ class Config:
 
 #===============================================
 class Configs:
-  def __init__(self, a_f=H(), v_f=H(), p_f=H(), r_f=H(), o_f=H(1,0,0,0)):
+  def __init__(self, t_f=0, a_f=H(), v_f=H(), p_f=H(), r_f=H(), o_f=H(1,0,0,0)):
     self.aConfigs = []
-    initConfig = Config(0, H(), H())
-    initConfig.setFinalConfig(a_f, v_f, p_f, r_f, o_f)
+    initConfig = Config(0, 0, H(), H())
+    initConfig.setFinalConfig(t_f, a_f, v_f, p_f, r_f, o_f)
     self.aConfigs.append(initConfig)
 
-  def addConfig(self, delta_t, a_f, r_f):
+  def addConfig(self, t_f, delta_t, a_f, r_f):
     finalConfig = self.aConfigs[len(self.aConfigs)-1].getFinalConfig()
 
-    self.aConfigs.append(Config(delta_t, a_f, r_f, *finalConfig))
+    self.aConfigs.append(Config(t_f, delta_t, a_f, r_f, *finalConfig))
 
   def cancelGravity(self):
     window_size = 15
@@ -120,5 +126,60 @@ class Configs:
     '''
     plt.axis('equal')
     #outfilename = 'img/motion_%s.png' % (re.sub("\..*$", "", sys.argv[1]))
-    outfilename = 'img/motion_%s.png' % (re.sub("\..*$", "", sys.argv[0]))
+    outfilename = 'img/%s_motion.png' % (re.sub("\..*$", "", sys.argv[0]))
+    plt.savefig(outfilename)
+
+    
+    #--- plot components ----------------------------
+    t = np.array([c.t_f for c in self.aConfigs[2:]])
+
+    # acceleration data as an array
+    a_x = np.array([c.a_f.x for c in self.aConfigs[2:]])
+    a_y = np.array([c.a_f.y for c in self.aConfigs[2:]])
+    a_z = np.array([c.a_f.z for c in self.aConfigs[2:]])
+
+    # rotation data as an array
+    r_x = np.array([c.r_f.x for c in self.aConfigs[2:]])
+    r_y = np.array([c.r_f.y for c in self.aConfigs[2:]])
+    r_z = np.array([c.r_f.z for c in self.aConfigs[2:]])
+
+    time_window_size = 2.0
+    frac = time_window_size / (t.max() - t.min())
+    # smoothed acceleration data
+    a_x0 = lowess(a_x, t, frac=frac)
+    a_y0 = lowess(a_y, t, frac=frac)
+    a_z0 = lowess(a_z, t, frac=frac)
+
+    # smoothed rotation data
+    r_x0 = lowess(r_x, t, frac=frac)
+    r_y0 = lowess(r_y, t, frac=frac)
+    r_z0 = lowess(r_z, t, frac=frac)
+
+    #--- plot ---------
+    plt.figure('earth_frame')
+    plt.subplot(2,2,1)
+    plt.plot(t, a_x, label='X')
+    plt.plot(t, a_y, label='Y')
+    plt.plot(t, a_z, label='Z')
+    plt.title('Acceleration, Earth frame')
+
+    plt.subplot(2,2,2)
+    plt.plot([i[0] for i in a_x0], [i[1] for i in a_x0], label='X')
+    plt.plot([i[0] for i in a_y0], [i[1] for i in a_y0], label='Y')
+    plt.plot([i[0] for i in a_z0], [i[1] for i in a_z0], label='Z')
+    plt.title('Rotation, Earth frame')
+
+    plt.subplot(2,2,3)
+    plt.plot(t, r_x, label='X')
+    plt.plot(t, r_y, label='Y')
+    plt.plot(t, r_z, label='Z')
+    plt.title('Acceleration smoothed, Earth frame')
+
+    plt.subplot(2,2,4)
+    plt.plot([i[0] for i in r_x0], [i[1] for i in r_x0], label='X')
+    plt.plot([i[0] for i in r_y0], [i[1] for i in r_y0], label='Y')
+    plt.plot([i[0] for i in r_z0], [i[1] for i in r_z0], label='Z')
+    plt.title('Rotation smoothed, Earth frame')
+
+    outfilename = 'img/%s_earth_frame.png' % (re.sub("\..*$", "", sys.argv[0]))
     plt.savefig(outfilename)

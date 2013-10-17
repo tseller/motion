@@ -15,7 +15,7 @@ lowess = sm.nonparametric.lowess
 data = []
 prev_t = 0
 cnt_A = 0
-o = {'delta_t': 0., 'acc': np.zeros(3), 'rot': np.zeros(3)}
+o = {'time': 0, 'delta_t': 0., 'acc': np.zeros(3), 'rot': np.zeros(3)}
 
 reader = csv.reader(open('stuff.tsv', "rb"), delimiter=' ')
 for row in reader:
@@ -28,7 +28,7 @@ for row in reader:
 
     data.append(o)
 
-    o = {'delta_t': delta_t, 'acc': np.zeros(3), 'rot': np.array([float(i) for i in row[2:]])}
+    o = {'time': float(row[0]), 'delta_t': delta_t, 'acc': np.zeros(3), 'rot': np.array([float(i) for i in row[2:]])}
 
   else:
     if prev_t == 0:
@@ -41,7 +41,12 @@ for row in reader:
 def lowess_filter():
   df = pd.io.parsers.read_csv(open('stuff.tsv', "rb"), delimiter=' ', names=['time','sensor','x','y','z'])
 
+  #--- plot ---------
+  subplot_num = 0
+
+  plt.figure('moving_frame')
   for key, grp in df.groupby('sensor'):
+
     t = np.array([i for i in grp.time])
     x = np.array([i for i in grp.x])
     y = np.array([i for i in grp.y])
@@ -53,20 +58,20 @@ def lowess_filter():
     y0 = lowess(y, t, frac=frac)
     z0 = lowess(z, t, frac=frac)
 
-    #--- plot ---------
-    plt.figure(key)
-    plt.subplot(2,1,1)
+    subplot_num += 1
+    plt.subplot(2,2,subplot_num)
     plt.plot(t, x)
     plt.plot(t, y)
     plt.plot(t, z)
 
-    plt.subplot(2,1,2)
+    subplot_num += 1
+    plt.subplot(2,2,subplot_num)
     plt.plot([i[0] for i in x0], [i[1] for i in x0]) 
     plt.plot([i[0] for i in y0], [i[1] for i in y0]) 
     plt.plot([i[0] for i in z0], [i[1] for i in z0]) 
 
-    outfilename = 'img/%s_lowess_%s.png' % (re.sub("\..*$", "", sys.argv[0]), key)
-    plt.savefig(outfilename)
+  outfilename = 'img/%s_moving_frame.png' % (re.sub("\..*$", "", sys.argv[0]))
+  plt.savefig(outfilename)
 
 def rolling_mean_filter():
   data2 = [np.append(np.append([d['delta_t']], d['acc']), d['rot']) for d in data]
@@ -119,10 +124,10 @@ df['gravZ'] = pd.Series(pd.rolling_mean(df, window_size)['accZ'], index=df.index
 '''
 #-----------------------------------
 c = Configs()
-for d in data[0:20]:
+for d in data[0:100]:
   acc = np.insert(d['acc'], 0 ,0)
   rot = np.insert(d['rot'], 0, 0)
   rot = [i/2.0 for i in rot] # quaternions need only _half_ the angle
-  c.addConfig(d['delta_t'], H(*acc), H(*rot))
+  c.addConfig(d['time'], d['delta_t'], H(*acc), H(*rot))
 
 c.plotConfigs()
