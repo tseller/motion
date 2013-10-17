@@ -16,8 +16,6 @@ class Config:
   def __init__(self, delta_t, a_f, r_f, a_i=H(), v_i=H(), p_i=H(), r_i=H(), o_i=H(1,0,0,0)):
     self.delta_t = delta_t
 
-    #self.aConfigs = []
-
     self.a_i = a_i # initial acceleration of primed origin wrt unprimed origin
     self.v_i = v_i # initial velocity of primed origin wrt unprimed origin
     self.p_i = p_i # initial location of primed origin wrt unprimed origin
@@ -29,15 +27,6 @@ class Config:
 
     self.updateOrientation()
     self.updatePosition()
-    #self.aConfigs.append({'p': self.p, 'v': self.v, 'a': self.a, 'o': self.o, 'r': self.r})
-
-  def updateConfig(self, a_n, r_n):
-    # Upon receiving updated acceleration and rotation data,
-    # use this and the previous data to calculate the current position and orientation.
-    self.updateOrientation(self.a_n)
-    self.updatePosition(self.r_n)
-
-    self.aConfigs.append({'p': self.p, 'v': self.v, 'a': self.a, 'o': self.o, 'r': self.r})
 
   def updatePosition(self):
     self.a_f = self.o_i * self.a_f * ~self.o_i
@@ -79,9 +68,9 @@ class Config:
 class Configs:
   def __init__(self, a_f=H(), v_f=H(), p_f=H(), r_f=H(), o_f=H(1,0,0,0)):
     self.aConfigs = []
-    iConfig = Config(0, H(), H())
-    iConfig.setFinalConfig(a_f, v_f, p_f, r_f, o_f)
-    self.aConfigs.append(iConfig)
+    initConfig = Config(0, H(), H())
+    initConfig.setFinalConfig(a_f, v_f, p_f, r_f, o_f)
+    self.aConfigs.append(initConfig)
 
   def addConfig(self, delta_t, a_f, r_f):
     finalConfig = self.aConfigs[len(self.aConfigs)-1].getFinalConfig()
