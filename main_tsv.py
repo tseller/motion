@@ -11,13 +11,16 @@ lowess = sm.nonparametric.lowess
 #--- read in data ---------
 # since G and A alternate, use the timestamp of G. average all subsequent A's
 # until the next G, and advance the result to the leading G's timestamp.
- 
+
+#datafile = sys.argv[1] 
+datafile = 'ideal.tsv'
+
 data = []
 prev_t = 0
 cnt_A = 0
 o = {'time': 0, 'delta_t': 0., 'acc': np.zeros(3), 'rot': np.zeros(3)}
 
-reader = csv.reader(open('stuff.tsv', "rb"), delimiter=' ')
+reader = csv.reader(open(datafile, "rb"), delimiter=' ')
 for row in reader:
   if row[1] == 'G':
     delta_t = float(row[0]) - prev_t if prev_t != 0 else 0
@@ -39,7 +42,7 @@ for row in reader:
 
 #--------------------------------
 def lowess_filter():
-  df = pd.io.parsers.read_csv(open('stuff.tsv', "rb"), delimiter=' ', names=['time','sensor','x','y','z'])
+  df = pd.io.parsers.read_csv(open(datafile, "rb"), delimiter=' ', names=['time','sensor','x','y','z'])
 
   #--- plot ---------
   subplot_num = 0
@@ -114,8 +117,8 @@ def rolling_mean_filter():
   outfilename = 'img/%s_rotation_filter.png' % (re.sub("\..*$", "", sys.argv[0]))
   plt.savefig(outfilename)
 
-lowess_filter()
-rolling_mean_filter()
+#lowess_filter()
+#rolling_mean_filter()
 '''
 window_size = 15
 df['gravX'] = pd.Series(pd.rolling_mean(df, window_size)['accX'], index=df.index)
@@ -124,10 +127,13 @@ df['gravZ'] = pd.Series(pd.rolling_mean(df, window_size)['accZ'], index=df.index
 '''
 #-----------------------------------
 c = Configs()
-for d in data[0:100]:
+for d in data:
   acc = np.insert(d['acc'], 0 ,0)
   rot = np.insert(d['rot'], 0, 0)
   rot = [i/2.0 for i in rot] # quaternions need only _half_ the angle
   c.addConfig(d['time'], d['delta_t'], H(*acc), H(*rot))
 
 c.plotConfigs()
+
+for i in c.aConfigs:
+  i.printConfig()
