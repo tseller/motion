@@ -14,9 +14,10 @@ lowess = sm.nonparametric.lowess
 import numpy as np
 from quaternion import Quaternion as H
 #-------------------------------------
-
+datafile = sys.argv[1] if len(sys.argv) > 1 else 'circle_run.tsv'
+#-----------------------------------------------
 class Config:
-  def __init__(self, t_f, delta_t, a_d, r_d, t_i = 0, a_i=H(), v_i=H(), p_i=H(), r_i=H(), o_i=H(1,0,0,0)):
+  def __init__(self, t_f, delta_t, delta_a, delta_r, t_i=0, a_i=H(), v_i=H(), p_i=H(), r_i=H(), o_i=H(1,0,0,0)):
     # we integrate the initial coordinates for a time delta_t.
     # the final coordinates are computed here and recorded
     # to become the initial values for the subsequent step.
@@ -35,23 +36,27 @@ class Config:
     self.o_i = o_i # initial orientation in transformed coords
 
     self.t_f = t_f # final time
-    #self.a_f = a_f # final acceleration of primed origin wrt unprimed origin
-    #self.r_f = r_d # final rotational velocity in transformed coords
 
-    self.updateOrientation(r_d)
-    self.updatePosition(a_d)
+    self.updateOrientation(delta_r)
+    self.updatePosition(delta_a)
 
-  def updatePosition(self, a_d):
-    self.a_f = self.o_f * a_d * ~self.o_f
+  def updatePosition(self, delta_a):
+    self.a_f = self.o_f * delta_a * ~self.o_f
     self.v_f = self.v_i + (self.a_i + self.a_f)/2.0 * self.delta_t
     self.p_f = self.p_i + (self.v_i + self.v_f)/2.0 * self.delta_t
 
-  def updateOrientation(self, r_d):
+  def updateOrientation(self, delta_r):
     # r_n units are radians per second.
     # to get the current orientation, exponentiate the _previous_ rotational rate
     # for a time of self.delta_t, starting from the previous orientation
-    self.r_f = self.o_i * r_d * ~self.o_i
+    self.r_f = (self.o_i * delta_r * ~self.o_i).imag()
     self.o_f = ((self.r_f * self.delta_t).exp() * self.o_i).normalize()
+
+  def getAcceleration(self):
+    return self.a_f.as_array()
+
+  def getRotation(self):
+    return self.r_f.as_array()
 
   def getInitialConfig(self):
     return (self.t_i, self.a_i, self.v_i, self.p_i, self.r_i, self.o_i)
@@ -106,30 +111,30 @@ class Configs:
 
     self.gravity /= float(len(self.aConfigs))
 
-  def plotConfigs(self):
+  def plotPositionE(self):
     x_axis = H(0,1,0,0)
     y_axis = H(0,0,1,0)
     z_axis = H(0,0,0,1)
 
-    fig = plt.figure()
+    fig = plt.figure('position')
     ax = Axes3D(fig)
 
     # plot boundaries, so that all axes are on the same scale
-    max_edge = max([max(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs])
-    min_edge = min([min(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs])
+    max_edge = max([max(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs[2:]])
+    min_edge = min([min(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs[2:]])
     ax.scatter(min_edge, min_edge, min_edge)
     ax.scatter(max_edge, max_edge, max_edge)
 
     # plot path
-    ax.plot([c.p_f.x for c in self.aConfigs], [c.p_f.y for c in self.aConfigs], [c.p_f.z for c in self.aConfigs])
+    ax.plot([c.p_f.x for c in self.aConfigs[2:]], [c.p_f.y for c in self.aConfigs[2:]], [c.p_f.z for c in self.aConfigs[2:]])
 
     '''
     for c in self.aConfigs:
       ax.scatter([c.p_f.x], [c.p_f.y], [c.p_f.z], c='r')
     '''
     # plot moving frames
-    for c in self.aConfigs:
-      rescale = 1.0/50
+    for c in self.aConfigs[2::10]:
+      rescale = 100.0
       x_frame = c.p_f + c.o_f * x_axis * ~c.o_f * rescale
       y_frame = c.p_f + c.o_f * y_axis * ~c.o_f * rescale
       z_frame = c.p_f + c.o_f * z_axis * ~c.o_f * rescale
@@ -140,11 +145,56 @@ class Configs:
       #plt.plot([x_frame.x, c['p'].x, y_frame.x], [x_frame.y, c['p'].y, y_frame.y])
 
     plt.axis('equal')
-    #outfilename = 'img/motion_%s.png' % (re.sub("\..*$", "", sys.argv[1]))
-    outfilename = 'img/%s_motion.png' % (re.sub("\..*$", "", sys.argv[0]))
+    outfilename = 'img/%s_position.png' % (re.sub("\..*$", "", datafile))
     plt.savefig(outfilename)
+#---------------------------------------------------------
+  def plotRotationE(self):
+    t = np.array([c.t_f for c in self.aConfigs[2:]])
 
-  def plotSmoothConfigs(self): 
+    # rotation data as an array
+    r_x = np.array([c.r_f.x for c in self.aConfigs[2:]])
+    r_y = np.array([c.r_f.y for c in self.aConfigs[2:]])
+    r_z = np.array([c.r_f.z for c in self.aConfigs[2:]])
+
+    fig = plt.figure('rotation')
+    ax = Axes3D(fig)
+
+    # plot boundaries, so that all axes are on the same scale
+    max_edge = max(max(r_x), max(r_y), max(r_z))
+    min_edge = min(min(r_x), min(r_y), min(r_z))
+    ax.scatter(min_edge, min_edge, min_edge)
+    ax.scatter(max_edge, max_edge, max_edge)
+
+    ax.plot(r_x, r_y, r_z)
+
+    plt.axis('equal')
+    outfilename = 'img/%s_rotation.png' % (re.sub("\..*$", "", datafile))
+    plt.savefig(outfilename)
+#-----------------------------------------------------
+  def plotAccelerationE(self):
+    t = np.array([c.t_f for c in self.aConfigs[2:]])
+
+    # acceleration data as an array
+    a_x = np.array([c.a_f.x for c in self.aConfigs[2:]])
+    a_y = np.array([c.a_f.y for c in self.aConfigs[2:]])
+    a_z = np.array([c.a_f.z for c in self.aConfigs[2:]])
+
+    fig = plt.figure('acceleration')
+    ax = Axes3D(fig)
+
+    # plot boundaries, so that all axes are on the same scale
+    max_edge = max(max(a_x), max(a_y), max(a_z))
+    min_edge = min(min(a_x), min(a_y), min(a_z))
+    ax.scatter(min_edge, min_edge, min_edge)
+    ax.scatter(max_edge, max_edge, max_edge)
+
+    ax.plot(a_x, a_y, a_z)
+
+    plt.axis('equal')
+    outfilename = 'img/%s_acceleration.png' % (re.sub("\..*$", "", datafile))
+    plt.savefig(outfilename)
+#-----------------------------------------------------
+  def plotComponentsE(self): 
     #--- plot components ----------------------------
     t = np.array([c.t_f for c in self.aConfigs[2:]])
 
@@ -158,47 +208,21 @@ class Configs:
     r_y = np.array([c.r_f.y for c in self.aConfigs[2:]])
     r_z = np.array([c.r_f.z for c in self.aConfigs[2:]])
 
-    time_window_size = 2.0
-    frac = time_window_size / (t.max() - t.min())
-    # smoothed acceleration data
-    a_x0 = lowess(a_x, t, frac=frac)
-    a_y0 = lowess(a_y, t, frac=frac)
-    a_z0 = lowess(a_z, t, frac=frac)
-
-    # smoothed rotation data
-    r_x0 = lowess(r_x, t, frac=frac)
-    r_y0 = lowess(r_y, t, frac=frac)
-    r_z0 = lowess(r_z, t, frac=frac)
-
-    #--- plot ---------
-    plt.figure('earth_frame')
-    plt.subplot(2,2,1)
+    #--- plot components ---------
+    plt.figure('earth_frame_components')
+    plt.subplot(2,1,1)
     plt.plot(t, a_x, label='X')
     plt.plot(t, a_y, label='Y')
     plt.plot(t, a_z, label='Z')
     plt.legend()
     plt.title('Acceleration, Earth frame')
 
-    plt.subplot(2,2,2)
-    plt.plot([i[0] for i in a_x0], [i[1] for i in a_x0], label='X')
-    plt.plot([i[0] for i in a_y0], [i[1] for i in a_y0], label='Y')
-    plt.plot([i[0] for i in a_z0], [i[1] for i in a_z0], label='Z')
-    plt.legend()
-    plt.title('Acceleration smoothed, Earth frame')
-
-    plt.subplot(2,2,3)
+    plt.subplot(2,1,2)
     plt.plot(t, r_x, label='X')
     plt.plot(t, r_y, label='Y')
     plt.plot(t, r_z, label='Z')
     plt.legend()
     plt.title('Rotation, Earth frame')
 
-    plt.subplot(2,2,4)
-    plt.plot([i[0] for i in r_x0], [i[1] for i in r_x0], label='X')
-    plt.plot([i[0] for i in r_y0], [i[1] for i in r_y0], label='Y')
-    plt.plot([i[0] for i in r_z0], [i[1] for i in r_z0], label='Z')
-    plt.legend()
-    plt.title('Rotation smoothed, Earth frame')
-
-    outfilename = 'img/%s_earth_frame.png' % (re.sub("\..*$", "", sys.argv[0]))
+    outfilename = 'img/%s_componentsE.png' % (re.sub("\..*$", "", datafile))
     plt.savefig(outfilename)

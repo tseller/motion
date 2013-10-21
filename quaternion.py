@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 class Quaternion(object):
   def __init__(self, w=0, x=0, y=0, z=0):
@@ -11,7 +12,7 @@ class Quaternion(object):
     return self.w
 
   def imag(self):
-    return Quaternion(0, self.x, self.y, self.z)
+    return Quaternion(0.0, self.x, self.y, self.z)
 
   def norm2(self):
     return self.w**2 + self.x**2 + self.y**2 + self.z**2
@@ -58,7 +59,10 @@ class Quaternion(object):
     return self * (1.0 / q) 
 
   def normalize(self):
-    return self / float(abs(self))
+    return self / float(abs(self)) if abs(self) != 0 else self
+
+  def as_array(self):
+    return np.array([self.w, self.x, self.y, self.z])
 
   def exp(self):
     imag = self.imag()
