@@ -12,7 +12,9 @@ lowess = sm.nonparametric.lowess
 # since G and A alternate, use the timestamp of G. average all subsequent A's
 # until the next G, and advance the result to the leading G's timestamp.
 
-datafile = sys.argv[1] if len(sys.argv) > 1 else 'circle_run.tsv'
+datafile = sys.argv[1] if len(sys.argv) > 1 else 'data/circle_run.tsv'
+p = re.compile('^(.*/)?(?:$|(.+?)(?:(\.[^.]*$)|$))')
+filename = p.match(datafile).group(2)
 
 #---------------------------------------------
 df = pd.io.parsers.read_csv(open(datafile, "rb"), delimiter=' ', names=['time','sensor','x','y','z'])
@@ -20,8 +22,8 @@ df = pd.io.parsers.read_csv(open(datafile, "rb"), delimiter=' ', names=['time','
 
 subplot_num = 0
 df_smooth = {'A': None, 'G': None}
-for key, grp in df[10:500].groupby('sensor'):
-  time_window_size = 2.0
+for key, grp in df[0:100].groupby('sensor'):
+  time_window_size = 1.0
   frac = time_window_size / (grp.time.max() - grp.time.min())
 
   # do the smoothing
@@ -36,14 +38,15 @@ for key, grp in df[10:500].groupby('sensor'):
   # add the other two smoothed series to the data frame
   df_smooth[key][key+'_y'] = pd.Series([i[1] for i in lowess_y], index=df_smooth[key].index)
   df_smooth[key][key+'_z'] = pd.Series([i[1] for i in lowess_z], index=df_smooth[key].index)
+  df_smooth[key][key+'_norm'] = pd.Series([i[1] for i in np.sqrt(lowess_x**2 + lowess_y**2 + lowess_z**2)], index=df_smooth[key].index)
 
   subplot_num += 1
   plt.figure('moving frame')
   plt.subplot(2,1,subplot_num)
   plt.plot(df_smooth[key])
-  plt.title(key)
+  plt.title(filename + ' %s, Device frame' % ('acceleration' if key == 'A' else 'rotation'))
 
-outfilename = 'img/%s_componentsD.png' % (re.sub("\..*$", "", datafile))
+outfilename = 'img/%s_componentsD.png' % (filename)
 plt.savefig(outfilename)
 
 # merge the 'A' and 'G' smoothed data frames
@@ -64,6 +67,7 @@ df.apply(lambda x: c.addConfig(x['time'], x['delta_t'], H(0.,x['A_x'],x['A_y'],x
 
 c.plotPositionE()
 c.plotAccelerationE()
+c.plotVelocityE()
 c.plotRotationE()
 c.plotComponentsE()
 #-----------------------------------------------------
@@ -89,7 +93,7 @@ def rolling_mean_filter():
   noise_acc.plot(ax=axes[2]); axes[2].set_title('Noise')
   #fig.tight_layout()
 
-  outfilename = 'img/%s_acceleration_filter.png' % (re.sub("\..*$", "", datafile))
+  outfilename = 'img/%s_acceleration_filter.png' % (filename)
   plt.savefig(outfilename)
 
   #--- plot rotation signal and noise --------
@@ -105,7 +109,7 @@ def rolling_mean_filter():
   noise_rot.plot(ax=axes[2]); axes[2].set_title('Noise')
   #fig.tight_layout()
 
-  outfilename = 'img/%s_rotation_filter.png' % (re.sub("\..*$", "", datafile))
+  outfilename = 'img/%s_rotation_filter.png' % (filename)
   plt.savefig(outfilename)
 
 #rolling_mean_filter()

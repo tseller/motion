@@ -13,8 +13,11 @@ lowess = sm.nonparametric.lowess
 
 import numpy as np
 from quaternion import Quaternion as H
+from scipy.optimize import fmin_cobyla
 #-------------------------------------
 datafile = sys.argv[1] if len(sys.argv) > 1 else 'circle_run.tsv'
+p = re.compile('^(.*/)?(?:$|(.+?)(?:(\.[^.]*$)|$))')
+filename = p.match(datafile).group(2)
 #-----------------------------------------------
 class Config:
   def __init__(self, t_f, delta_t, delta_a, delta_r, t_i=0, a_i=H(), v_i=H(), p_i=H(), r_i=H(), o_i=H(1,0,0,0)):
@@ -89,7 +92,16 @@ class Config:
     print 'o_f: %s' % (self.o_f)
 
 #===============================================
+CONST_GRAVITY = 9.78
+
+def objective_gravity(x, d):
+  return (np.sum(np.dot(d-x,x))/np.linalg.norm(x))**2
+
+def grav_constraint(x):
+  return np.linalg.norm(x) - CONST_GRAVITY
+
 class Configs:
+
   def __init__(self, t_f=0, a_f=H(), v_f=H(), p_f=H(), r_f=H(), o_f=H(1,0,0,0)):
     self.aConfigs = []
     initConfig = Config(0, 0, H(), H())
@@ -101,15 +113,17 @@ class Configs:
 
     self.aConfigs.append(Config(t_f, delta_t, a_f, r_f, *initConfig))
 
-  def cancelGravity(self):
+  def setGravity(self):
     window_size = 15
+    d = self.aConfigs[len(self.aConfigs)-window_size:]
 
-    self.gravity = H()
+    def func(x):
+      return (np.sum(np.dot(d-x,x))/np.linalg.norm(x))**2
 
-    for c in self.aConfigs:
-      self.gravity += c.a_f
+    def constr(x):
+      return np.linalg.norm(x) - CONST_GRAVITY
 
-    self.gravity /= float(len(self.aConfigs))
+    self.gravity = fmin_cobyla(func, [0., 0., 0.], constr, rhoend=1e-7)
 
   def plotPositionE(self):
     x_axis = H(0,1,0,0)
@@ -124,6 +138,8 @@ class Configs:
     min_edge = min([min(c.p_f.x, c.p_f.y, c.p_f.z) for c in self.aConfigs[2:]])
     ax.scatter(min_edge, min_edge, min_edge)
     ax.scatter(max_edge, max_edge, max_edge)
+
+    ax.scatter(0,0,0, c='white')
 
     # plot path
     ax.plot([c.p_f.x for c in self.aConfigs[2:]], [c.p_f.y for c in self.aConfigs[2:]], [c.p_f.z for c in self.aConfigs[2:]])
@@ -144,8 +160,9 @@ class Configs:
       ax.plot([c.p_f.x, z_frame.x], [c.p_f.y, z_frame.y], [c.p_f.z, z_frame.z], c='b')
       #plt.plot([x_frame.x, c['p'].x, y_frame.x], [x_frame.y, c['p'].y, y_frame.y])
 
+    plt.title(filename + ' position, Earth frame')
     plt.axis('equal')
-    outfilename = 'img/%s_position.png' % (re.sub("\..*$", "", datafile))
+    outfilename = 'img/%s_positionE.png' % (filename)
     plt.savefig(outfilename)
 #---------------------------------------------------------
   def plotRotationE(self):
@@ -165,10 +182,13 @@ class Configs:
     ax.scatter(min_edge, min_edge, min_edge)
     ax.scatter(max_edge, max_edge, max_edge)
 
+    ax.scatter(0,0,0, c='white')
+
     ax.plot(r_x, r_y, r_z)
 
+    plt.title(filename + ' rotation, Earth frame')
     plt.axis('equal')
-    outfilename = 'img/%s_rotation.png' % (re.sub("\..*$", "", datafile))
+    outfilename = 'img/%s_rotationE.png' % (filename)
     plt.savefig(outfilename)
 #-----------------------------------------------------
   def plotAccelerationE(self):
@@ -188,10 +208,40 @@ class Configs:
     ax.scatter(min_edge, min_edge, min_edge)
     ax.scatter(max_edge, max_edge, max_edge)
 
+    ax.scatter(0,0,0, c='white')
+
     ax.plot(a_x, a_y, a_z)
 
+    plt.title(filename + ' acceleration, Earth frame')
     plt.axis('equal')
-    outfilename = 'img/%s_acceleration.png' % (re.sub("\..*$", "", datafile))
+    outfilename = 'img/%s_accelerationE.png' % (filename)
+    plt.savefig(outfilename)
+
+#-----------------------------------------------------
+  def plotVelocityE(self):
+    t = np.array([c.t_f for c in self.aConfigs[2:]])
+
+    # acceleration data as an array
+    v_x = np.array([c.v_f.x for c in self.aConfigs[2:]])
+    v_y = np.array([c.v_f.y for c in self.aConfigs[2:]])
+    v_z = np.array([c.v_f.z for c in self.aConfigs[2:]])
+
+    fig = plt.figure('velocity')
+    ax = Axes3D(fig)
+
+    # plot boundaries, so that all axes are on the same scale
+    max_edge = max(max(v_x), max(v_y), max(v_z))
+    min_edge = min(min(v_x), min(v_y), min(v_z))
+    ax.scatter(min_edge, min_edge, min_edge)
+    ax.scatter(max_edge, max_edge, max_edge)
+
+    ax.scatter(0,0,0, c='white')
+
+    ax.plot(v_x, v_y, v_z)
+
+    plt.title(filename + ' velocity, Earth frame')
+    plt.axis('equal')
+    outfilename = 'img/%s_velocityE.png' % (filename)
     plt.savefig(outfilename)
 #-----------------------------------------------------
   def plotComponentsE(self): 
@@ -202,11 +252,13 @@ class Configs:
     a_x = np.array([c.a_f.x for c in self.aConfigs[2:]])
     a_y = np.array([c.a_f.y for c in self.aConfigs[2:]])
     a_z = np.array([c.a_f.z for c in self.aConfigs[2:]])
+    a_norm = np.array([abs(c.a_f) for c in self.aConfigs[2:]])
 
     # rotation data as an array
     r_x = np.array([c.r_f.x for c in self.aConfigs[2:]])
     r_y = np.array([c.r_f.y for c in self.aConfigs[2:]])
     r_z = np.array([c.r_f.z for c in self.aConfigs[2:]])
+    r_norm = np.array([abs(c.r_f) for c in self.aConfigs[2:]])
 
     #--- plot components ---------
     plt.figure('earth_frame_components')
@@ -214,15 +266,17 @@ class Configs:
     plt.plot(t, a_x, label='X')
     plt.plot(t, a_y, label='Y')
     plt.plot(t, a_z, label='Z')
+    plt.plot(t, a_norm, label='Norm')
     plt.legend()
-    plt.title('Acceleration, Earth frame')
+    plt.title(filename + ' acceleration, Earth frame')
 
     plt.subplot(2,1,2)
     plt.plot(t, r_x, label='X')
     plt.plot(t, r_y, label='Y')
     plt.plot(t, r_z, label='Z')
+    plt.plot(t, r_norm, label='Norm')
     plt.legend()
-    plt.title('Rotation, Earth frame')
+    plt.title(filename + ' rotation, Earth frame')
 
-    outfilename = 'img/%s_componentsE.png' % (re.sub("\..*$", "", datafile))
+    outfilename = 'img/%s_componentsE.png' % (filename)
     plt.savefig(outfilename)
